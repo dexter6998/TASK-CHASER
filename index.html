@@ -1,0 +1,99 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Task Chaser | Elite Performance</title>
+    
+    <!-- PWA & Native App Meta -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Task Chaser">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#050505">
+    <meta name="format-detection" content="telephone=no">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --safe-area-inset-top: env(safe-area-inset-top, 0px);
+            --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        
+        * {
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            user-select: none;
+        }
+
+        input {
+            user-select: text !important;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #050505; 
+            color: #f8fafc;
+            overflow-x: hidden;
+            overscroll-behavior-y: none;
+            touch-action: pan-x pan-y;
+        }
+
+        /* Safe area helpers */
+        .safe-pb { padding-bottom: calc(1rem + var(--safe-area-inset-bottom)); }
+        .safe-pt { padding-top: calc(1rem + var(--safe-area-inset-top)); }
+        .safe-mb { margin-bottom: var(--safe-area-inset-bottom); }
+
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+        @keyframes scan {
+          0% { transform: translateY(0); opacity: 0; }
+          50% { opacity: 0.5; }
+          100% { transform: translateY(100vh); opacity: 0; }
+        }
+        .animate-scan {
+          animation: scan 3s linear infinite;
+        }
+
+        .tactical-brush .recharts-brush-slide {
+            fill: #2563eb;
+            fill-opacity: 0.05;
+        }
+        .tactical-brush .recharts-brush-traveller rect {
+            fill: #fff;
+            stroke: #2563eb;
+            rx: 4;
+        }
+
+        .sheet-shadow {
+            box-shadow: 0 -10px 40px -10px rgba(0,0,0,0.5);
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "framer-motion": "https://esm.sh/framer-motion@^12.23.26",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "vite": "https://esm.sh/vite@^7.3.0",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module" src="index.tsx"></script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
