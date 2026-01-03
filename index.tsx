@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { 
@@ -6,26 +7,60 @@ import {
   Sparkles, 
   Loader2, 
   Zap,
-  BarChart3,
-  X,
-  Lock,
-  Unlock,
-  Trophy,
   Target,
   Activity,
-  History,
-  TrendingUp,
   Settings2,
-  ChevronRight,
-  ShieldCheck,
-  ShieldAlert,
   Flame,
-  CheckCircle2,
-  User,
-  LogOut,
   Edit2,
-  Info,
-  ArrowRight
+  Cpu,
+  Wifi,
+  Radio,
+  Terminal,
+  BrainCircuit,
+  Lock,
+  Trophy,
+  ChevronRight,
+  TrendingUp,
+  LineChart,
+  Volume2,
+  VolumeX,
+  Bell,
+  BellRing,
+  Clock,
+  X,
+  ShieldAlert,
+  AlertTriangle,
+  Circle,
+  Music,
+  Waves,
+  Sun,
+  Moon,
+  ZapOff,
+  Calendar,
+  Repeat,
+  LayoutGrid,
+  Filter,
+  Layers,
+  Award,
+  ShieldCheck,
+  ZapIcon,
+  Timer,
+  CheckCircle2,
+  Star,
+  MessageSquare,
+  Bot,
+  Command,
+  Briefcase,
+  TrendingDown,
+  Power,
+  Globe,
+  PieChart,
+  User,
+  Coffee,
+  Heart,
+  Laptop,
+  BarChart3,
+  AreaChart as AreaChartIcon
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { motion, AnimatePresence } from 'framer-motion';
@@ -36,19 +71,32 @@ import {
   Tooltip, 
   ResponsiveContainer, 
   Cell,
-  ComposedChart,
+  ComposedChart, 
   Line,
   CartesianGrid,
   Area,
-  Brush
+  AreaChart,
+  BarChart
 } from 'recharts';
 
-// --- Tactical Types ---
+// --- Types ---
+type Priority = 'HIGH' | 'MEDIUM' | 'LOW';
+type CompletionSound = 'DIGITAL' | 'HARMONIC' | 'DATA';
+type ReminderSound = 'BEAM' | 'RADAR' | 'SIGNAL';
+type AppMode = 'NORMAL' | 'FOUNDER';
+type AppTheme = 'DARK' | 'LIGHT';
+type Frequency = 'DAILY' | 'WEEKLY' | 'CUSTOM';
+
 interface Habit {
   id: string;
   text: string;
   icon: string;
   entries: Record<string, boolean>;
+  reminders: string[];
+  priority: Priority;
+  frequency: Frequency;
+  daysOfWeek: number[];
+  category: string;
   createdAt: number;
 }
 
@@ -56,11 +104,17 @@ interface UserProfile {
   name: string;
   avatar: string;
   onboarded: boolean;
+  completionSound: CompletionSound;
+  reminderSound: ReminderSound;
+  theme: AppTheme;
+  mode: AppMode;
+  companyName?: string;
 }
 
-interface AIResponse {
+interface JarvisMessage {
+  role: 'assistant' | 'user';
   content: string;
-  loading: boolean;
+  timestamp: number;
 }
 
 interface Goals {
@@ -68,730 +122,670 @@ interface Goals {
   weekly: number;
 }
 
-const iconMap: Record<string, string> = {
-  "Wake up": "⏰",
-  "Bed": "🛏️",
-  "Shower": "🚿",
-  "Reading": "📖",
-  "Gym": "🏋️",
-  "Meditation": "🧘",
-  "Work": "💼",
-  "Deep Work": "🧠",
-  "Water": "💧",
-  "Default": "⚡"
-};
+interface Medal {
+  id: string;
+  title: string;
+  desc: string;
+  icon: React.ReactNode;
+  isUnlocked: boolean;
+  progress: number;
+  metricLabel: string;
+}
 
-const AVATARS = [
-  "🥷", "⚡", "🦾", "🧬", "🌌", "🎯", "🔥", "🦅"
-];
+const NORMAL_CATEGORIES = ['HEALTH', 'WORK', 'GROWTH', 'SOCIAL', 'ROUTINE'];
+const FOUNDER_VERTICALS = ['STRATEGY', 'OPERATIONS', 'NETWORKING', 'PRODUCT', 'WELLNESS', 'CAPITAL'];
+const AVATARS = ["🤴", "👔", "🚀", "📈", "🦾", "💎", "🦁", "🦅", "🥷", "⚡"];
 
 const getIconForText = (text: string) => {
-  for (const key in iconMap) {
-    if (text.toLowerCase().includes(key.toLowerCase())) return iconMap[key];
-  }
-  return iconMap.Default;
+  const map: any = {
+    "Strategy": "🎯", "Meeting": "🤝", "Deep Work": "🧠", "Email": "📨", "Health": "🥗",
+    "Capital": "💰", "Growth": "📈", "Product": "🛠️", "Gym": "🏋️", "Water": "💧", "Default": "⚡"
+  };
+  for (const key in map) if (text.toLowerCase().includes(key.toLowerCase())) return map[key];
+  return map.Default;
+};
+
+// --- Tactical Audio Engine ---
+let audioCtx: AudioContext | null = null;
+const initAudio = () => {
+  if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+};
+
+const playTacticalSound = (type: 'success' | 'click' | 'alert' | 'reminder', profile?: CompletionSound | ReminderSound) => {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const createOsc = (f: number, t: OscillatorType, start: number, dur: number, g: number) => {
+    const o = audioCtx!.createOscillator();
+    const gn = audioCtx!.createGain();
+    o.type = t; o.frequency.setValueAtTime(f, start);
+    o.connect(gn); gn.connect(audioCtx!.destination);
+    gn.gain.setValueAtTime(0, start); gn.gain.linearRampToValueAtTime(g, start + 0.01);
+    gn.gain.exponentialRampToValueAtTime(0.001, start + dur);
+    o.start(start); o.stop(start + dur);
+  };
+  if (type === 'click') createOsc(440, 'square', now, 0.05, 0.05);
+  else if (type === 'alert') createOsc(110, 'sawtooth', now, 0.2, 0.1);
+  else if (type === 'success') {
+    const p = profile || 'DIGITAL';
+    if (p === 'DIGITAL') createOsc(880, 'sine', now, 0.15, 0.1);
+    else if (p === 'HARMONIC') { [440, 660, 880].forEach((f, i) => createOsc(f, 'sine', now + i*0.05, 0.3, 0.04)); }
+  } else if (type === 'reminder') createOsc(1200, 'sine', now, 0.1, 0.05);
 };
 
 const triggerHaptic = (style: 'light' | 'medium' | 'heavy' = 'light') => {
-  if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
-    const pattern = style === 'light' ? [10] : style === 'medium' ? [20] : [50];
-    window.navigator.vibrate(pattern);
+  if (window.navigator?.vibrate) {
+    const p = style === 'light' ? [10] : style === 'medium' ? [25] : [50, 20, 50];
+    window.navigator.vibrate(p);
   }
 };
 
-const ProgressRing = ({ percentage, color = "stroke-blue-500", size = 48 }: { percentage: number, color?: string, size?: number }) => {
-  const radius = size * 0.4;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (Math.min(100, percentage) / 100) * circumference;
+const getThemeColors = (mode: AppMode, theme: AppTheme) => {
+  const isDark = theme === 'DARK';
+  const isFounder = mode === 'FOUNDER';
 
+  if (isFounder) {
+    return {
+      bg: isDark ? 'bg-[#0a0a0b]' : 'bg-orange-50',
+      card: isDark ? 'bg-[#121214]' : 'bg-white',
+      text: isDark ? 'text-[#f4f4f5]' : 'text-zinc-900',
+      textMuted: 'text-zinc-500',
+      border: isDark ? 'border-white/5' : 'border-orange-100',
+      accent: 'amber-400',
+      accentText: 'text-amber-500',
+      accentBg: 'bg-amber-500',
+      ring: 'ring-amber-400/10',
+      chart: '#fbbf24',
+      jarvis: 'bg-amber-500'
+    };
+  }
+
+  return {
+    bg: isDark ? 'bg-[#050505]' : 'bg-slate-50',
+    card: isDark ? 'bg-[#0e0e10]' : 'bg-white',
+    text: isDark ? 'text-[#e2e8f0]' : 'text-slate-900',
+    textMuted: 'text-zinc-500',
+    border: isDark ? 'border-white/5' : 'border-slate-200',
+    accent: 'blue-500',
+    accentText: 'text-blue-500',
+    accentBg: 'bg-blue-600',
+    ring: 'ring-blue-500/10',
+    chart: '#3b82f6',
+    jarvis: 'bg-blue-600'
+  };
+};
+
+// --- Dashboard Components (Inspired by User Image) ---
+
+const ProgressRingLarge = ({ percentage, color, theme }: { percentage: number, color: string, theme: AppTheme }) => {
+  const r = 50; const c = 2 * Math.PI * r;
+  const offset = c - (Math.min(100, percentage) / 100) * c;
   return (
-    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg className="transform -rotate-90" width={size} height={size}>
-        <circle className="stroke-white/5" strokeWidth="4" fill="transparent" r={radius} cx={size / 2} cy={size / 2} />
-        <motion.circle
-          className={color}
-          strokeWidth="4"
-          strokeDasharray={circumference}
-          initial={{ strokeDashoffset: circumference }}
-          animate={{ strokeDashoffset }}
-          transition={{ duration: 1.5, ease: "easeOut" }}
-          strokeLinecap="round"
-          fill="transparent"
-          r={radius}
-          cx={size / 2}
-          cy={size / 2}
+    <div className="relative flex items-center justify-center w-32 h-32">
+      <svg className="transform -rotate-90" width="128" height="128" viewBox="0 0 128 128">
+        <circle className={theme === 'DARK' ? 'stroke-white/5' : 'stroke-zinc-100'} strokeWidth="12" fill="transparent" r={r} cx="64" cy="64" />
+        <motion.circle 
+          className={color} 
+          strokeWidth="12" 
+          strokeDasharray={c} 
+          initial={{ strokeDashoffset: c }} 
+          animate={{ strokeDashoffset: offset }} 
+          transition={{ duration: 1, ease: "easeOut" }}
+          strokeLinecap="round" 
+          fill="transparent" 
+          r={r} cx="64" cy="64" 
         />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-[9px] font-black text-white">{Math.round(percentage)}%</span>
+      <div className="absolute flex flex-col items-center justify-center">
+        <span className="text-3xl font-black italic">{Math.round(percentage)}%</span>
+        <span className="text-[7px] font-bold uppercase opacity-30 tracking-tighter">Capacity</span>
       </div>
     </div>
   );
 };
 
-const TacticalTooltip = ({ active, payload, label, dailyGoal }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    const daily = data.daily || 0;
-    const weekly = data.weeklyVelocity || 0;
-    const streak = data.missionStreak || 0;
-    const completedList = data.completedDetails || [];
-    const isGoalMet = daily >= dailyGoal;
-    const progressPerc = Math.min(100, (daily / Math.max(1, dailyGoal)) * 100);
-
-    return (
-      <div className="bg-[#0e0e10]/98 backdrop-blur-2xl border border-white/10 p-5 rounded-[1.5rem] shadow-2xl min-w-[220px] pointer-events-none z-[2000] border-t-blue-500/30">
-        <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-2">
-           <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">{label} OVERVIEW</p>
-           {streak > 1 && (
-             <div className="flex items-center gap-1 bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/20">
-               <Flame size={10} className="text-orange-500 fill-orange-500" />
-               <span className="text-[9px] font-black text-orange-500">{streak} DAY STREAK</span>
-             </div>
-           )}
-        </div>
-        
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-end">
-              <span className="text-[8px] font-bold text-zinc-500 uppercase">Daily Objective</span>
-              <span className={`text-xs font-black italic ${isGoalMet ? 'text-emerald-500' : 'text-white'}`}>
-                {daily}/{dailyGoal}
-              </span>
-            </div>
-            <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
-               <div 
-                 className={`h-full transition-all duration-500 ${isGoalMet ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'bg-blue-600'}`} 
-                 style={{ width: `${progressPerc}%` }}
-               />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-             <p className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest border-l-2 border-zinc-800 pl-2">Secured Protocols</p>
-             <div className="flex flex-wrap gap-1.5">
-               {completedList.length > 0 ? completedList.map((h: any, idx: number) => (
-                 <div key={idx} className="w-8 h-8 rounded-lg bg-zinc-900 border border-white/5 flex items-center justify-center text-xs" title={h.text}>
-                   {h.icon}
-                 </div>
-               )) : (
-                 <p className="text-[9px] font-black text-zinc-800 italic uppercase">No protocols secured</p>
-               )}
-             </div>
-          </div>
-
-          <div className="pt-2 flex justify-between items-center border-t border-white/5">
-             <span className="text-[8px] font-bold text-zinc-500 uppercase">Velocity</span>
-             <span className="text-[10px] font-black text-blue-500 italic">{weekly} AVG</span>
-          </div>
-        </div>
+const MiniDailySnapshot = ({ day, percentage, color, theme }: { day: string, percentage: number, color: string, theme: AppTheme }) => {
+  const r = 24; const c = 2 * Math.PI * r;
+  const offset = c - (Math.min(100, percentage) / 100) * c;
+  return (
+    <div className={`flex flex-col items-center justify-between p-4 rounded-3xl border ${theme === 'DARK' ? 'bg-white/[0.03] border-white/5' : 'bg-zinc-50 border-zinc-100'} w-24 h-32`}>
+      <p className="text-[10px] font-black uppercase opacity-60 tracking-widest">{day}</p>
+      <div className="relative flex items-center justify-center w-12 h-12">
+        <svg className="transform -rotate-90" width="48" height="48">
+          <circle className={theme === 'DARK' ? 'stroke-white/10' : 'stroke-zinc-200'} strokeWidth="5" fill="transparent" r={r-4} cx="24" cy="24" />
+          <motion.circle 
+            className={color} 
+            strokeWidth="5" 
+            strokeDasharray={c-8} 
+            initial={{ strokeDashoffset: c-8 }} 
+            animate={{ strokeDashoffset: offset }} 
+            strokeLinecap="round" 
+            fill="transparent" 
+            r={r-4} cx="24" cy="24" 
+          />
+        </svg>
+        <span className="absolute text-[8px] font-black">{Math.round(percentage)}%</span>
       </div>
-    );
-  }
-  return null;
+    </div>
+  );
 };
 
-// --- Main Application ---
+const PriorityBadge = ({ level, mode, colors }: { level: Priority, mode: AppMode, colors: any }) => {
+  const isFounder = mode === 'FOUNDER';
+  const config = {
+    HIGH: { label: isFounder ? 'CRITICAL' : 'HIGH', color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/20' },
+    MEDIUM: { label: isFounder ? 'STANDARD' : 'MEDIUM', color: colors.accentText, bg: `${colors.accentBg}/10`, border: `${colors.accentBg}/20` },
+    LOW: { label: isFounder ? 'ROUTINE' : 'LOW', color: colors.textMuted, bg: 'bg-white/5', border: colors.border }
+  }[level];
 
+  return (
+    <div className={`px-2 py-0.5 rounded-full border ${config.bg} ${config.border} flex items-center gap-1`}>
+      <span className={`w-1 h-1 rounded-full ${level === 'HIGH' ? 'bg-rose-500 animate-pulse' : config.color.replace('text', 'bg')}`} />
+      <span className={`text-[7px] font-black uppercase tracking-widest ${config.color}`}>{config.label}</span>
+    </div>
+  );
+};
+
+const FrequencyBadge = ({ frequency, colors }: { frequency: Frequency, colors: any }) => (
+  <div className={`px-2 py-0.5 rounded-full border bg-white/5 ${colors.border} flex items-center gap-1`}>
+    <Repeat size={8} className={colors.textMuted} />
+    <span className={`text-[7px] font-black uppercase tracking-widest ${colors.textMuted}`}>{frequency}</span>
+  </div>
+);
+
+// --- Main Application ---
 const DailyAchiever = () => {
-  // --- Persistent User State ---
   const [profile, setProfile] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem('achiever_matrix_profile');
+    const saved = localStorage.getItem('achiever_nexus_profile_v3');
     return saved ? JSON.parse(saved) : null;
   });
 
   const [habits, setHabits] = useState<Habit[]>(() => {
-    const saved = localStorage.getItem('achiever_matrix_habits');
-    return saved ? JSON.parse(saved) : [
-      { id: '1', text: 'WAKE UP AT 05:00', icon: '⏰', entries: {}, createdAt: Date.now() },
-      { id: '2', text: 'MAKE MY BED', icon: '🛏️', entries: {}, createdAt: Date.now() },
-      { id: '3', text: 'COLD SHOWER', icon: '🚿', entries: {}, createdAt: Date.now() },
-      { id: '4', text: '5 PAGE READING', icon: '📖', entries: {}, createdAt: Date.now() }
-    ];
+    const saved = localStorage.getItem('achiever_nexus_habits_v3');
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [goals, setGoals] = useState<Goals>(() => {
-    const saved = localStorage.getItem('achiever_matrix_goals');
-    return saved ? JSON.parse(saved) : { daily: 4, weekly: 25 };
+    const saved = localStorage.getItem('achiever_nexus_goals_v3');
+    return saved ? JSON.parse(saved) : { daily: 3, weekly: 15 };
   });
 
-  // --- UI State ---
-  const [activeView, setActiveView] = useState<'OPERATIONS' | 'MERIT'>('OPERATIONS');
-  const [inputValue, setInputValue] = useState('');
-  const [aiResponse, setAiResponse] = useState<AIResponse | null>(null);
+  const [jarvisActive, setJarvisActive] = useState(false);
+  const [jarvisHistory, setJarvisHistory] = useState<JarvisMessage[]>([]);
+  const [jarvisInput, setJarvisInput] = useState('');
+  const [jarvisThinking, setJarvisThinking] = useState(false);
+  
+  const [activeView, setActiveView] = useState<'OPS' | 'MERIT'>('OPS');
+  const [selectedCat, setSelectedCat] = useState<string | 'ALL'>('ALL');
   const [isAdding, setIsAdding] = useState(false);
-  const [isSettingGoals, setIsSettingGoals] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
 
-  // Persistence Effects
-  useEffect(() => {
-    if (profile) localStorage.setItem('achiever_matrix_profile', JSON.stringify(profile));
-    else localStorage.removeItem('achiever_matrix_profile');
-  }, [profile]);
+  const colors = useMemo(() => getThemeColors(profile?.mode || 'NORMAL', profile?.theme || 'DARK'), [profile?.mode, profile?.theme]);
+  const isFounder = profile?.mode === 'FOUNDER';
+  const categories = isFounder ? FOUNDER_VERTICALS : NORMAL_CATEGORIES;
 
-  useEffect(() => {
-    localStorage.setItem('achiever_matrix_habits', JSON.stringify(habits));
-  }, [habits]);
+  useEffect(() => { if (profile) localStorage.setItem('achiever_nexus_profile_v3', JSON.stringify(profile)); }, [profile]);
+  useEffect(() => { localStorage.setItem('achiever_nexus_habits_v3', JSON.stringify(habits)); }, [habits]);
 
-  useEffect(() => {
-    localStorage.setItem('achiever_matrix_goals', JSON.stringify(goals));
-  }, [goals]);
-
-  // --- Core Logic ---
   const todayIdx = useMemo(() => new Date().getDate(), []);
-  const currentMonthName = useMemo(() => new Date().toLocaleString('default', { month: 'long' }).toUpperCase(), []);
-  const prevMonthAccuracy = 62;
+  const getDayOfWeekForDate = useCallback((dayOfMonth: number) => {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    return new Date(currentYear, currentMonth, dayOfMonth).getDay();
+  }, []);
 
-  const toggleHabitDate = useCallback((habitId: string, dayIndex: number) => {
-    if (dayIndex !== todayIdx) return;
-    const dateKey = `day-${dayIndex}`;
-    setHabits(prev => prev.map(h => {
-      if (h.id === habitId) {
-        const isDone = !h.entries[dateKey];
-        triggerHaptic(isDone ? 'medium' : 'light');
-        return {
-          ...h,
-          entries: { ...h.entries, [dateKey]: isDone }
-        };
-      }
-      return h;
-    }));
-  }, [todayIdx]);
-
-  const addHabit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputValue.trim()) return;
-    triggerHaptic('medium');
-    const newHabit: Habit = {
-      id: crypto.randomUUID(),
-      text: inputValue.toUpperCase(),
-      icon: getIconForText(inputValue),
-      entries: {},
-      createdAt: Date.now()
-    };
-    setHabits(prev => [...prev, newHabit]);
-    setInputValue('');
-    setIsAdding(false);
-  };
-
-  const deleteHabit = (id: string) => {
-    triggerHaptic('heavy');
-    setHabits(prev => prev.filter(h => h.id !== id));
-  };
-
-  const updateHabitText = (id: string, newText: string) => {
-    setHabits(prev => prev.map(h => h.id === id ? { ...h, text: newText.toUpperCase(), icon: getIconForText(newText) } : h));
-    setEditingHabitId(null);
-    triggerHaptic('light');
-  };
-
-  const updateGoals = (newGoals: Partial<Goals>) => {
-    triggerHaptic('light');
-    setGoals(prev => ({ ...prev, ...newGoals }));
-  };
-
-  const getEfficacy = (habit: Habit) => {
-    const completions = Object.values(habit.entries).filter(Boolean).length;
-    return Math.round((completions / 30) * 100);
-  };
-
-  // --- Performance Metrics ---
-  const dailyProgress = useMemo(() => {
+  // Metrics & Analytics Data
+  const dailyProgressPercentage = useMemo(() => {
+    if (habits.length === 0) return 0;
     const dayKey = `day-${todayIdx}`;
-    return habits.reduce((acc, h) => acc + (h.entries[dayKey] ? 1 : 0), 0);
-  }, [habits, todayIdx]);
-
-  const weeklyProgress = useMemo(() => {
-    let total = 0;
-    for (let i = Math.max(1, todayIdx - 6); i <= todayIdx; i++) {
-      const dayKey = `day-${i}`;
-      total += habits.reduce((acc, h) => acc + (h.entries[dayKey] ? 1 : 0), 0);
-    }
-    return total;
+    const done = habits.reduce((acc, h) => acc + (h.entries[dayKey] ? 1 : 0), 0);
+    return (done / habits.length) * 100;
   }, [habits, todayIdx]);
 
   const accuracyRate = useMemo(() => {
-    const totalCompletions = habits.reduce((acc, h) => acc + Object.values(h.entries).filter(Boolean).length, 0);
-    const totalSlots = (habits.length || 1) * 30;
-    return Math.round((totalCompletions / totalSlots) * 100);
-  }, [habits]);
-
-  const accuracyDelta = useMemo(() => accuracyRate - prevMonthAccuracy, [accuracyRate]);
+    const done = habits.reduce((acc, h) => acc + Object.values(h.entries).filter(Boolean).length, 0);
+    let scheduled = 0;
+    for (let d = 1; d <= 30; d++) {
+        const dow = getDayOfWeekForDate(d);
+        habits.forEach(h => { if (h.daysOfWeek.includes(dow)) scheduled++; });
+    }
+    return Math.round((done / Math.max(1, scheduled)) * 100);
+  }, [habits, getDayOfWeekForDate]);
 
   const analyticsPayload = useMemo(() => {
-    const history = Array.from({ length: 30 }, (_, i) => {
-      const day = i + 1;
-      const completedHabitsOnDay = habits.filter(h => h.entries[`day-${day}`]);
-      return { day, count: completedHabitsOnDay.length, completedDetails: completedHabitsOnDay.map(h => ({ icon: h.icon, text: h.text })) };
-    });
-
-    return history.map((h, i) => {
-      let weeklySum = 0;
-      let windowSize = 0;
-      for (let j = Math.max(0, i - 6); j <= i; j++) {
-        weeklySum += history[j].count;
-        windowSize++;
-      }
-      const weeklyAvg = Number((weeklySum / windowSize).toFixed(1));
-      const baselineFactor = (prevMonthAccuracy / 100) * (habits.length || 1);
-      const prevCycleAvg = Number((baselineFactor + Math.sin(h.day * 0.5) * 0.5).toFixed(1));
-
+    const DAYS_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return Array.from({ length: 14 }, (_, i) => {
+      const targetDay = todayIdx - (13 - i);
+      if (targetDay < 1) return { name: 'N/A', completed: 0, streak: 0 };
+      const dow = getDayOfWeekForDate(targetDay);
+      const count = habits.filter(h => h.entries[`day-${targetDay}`]).length;
       let streak = 0;
-      for (let k = i; k >= 0; k--) {
-        if (history[k].count >= goals.daily) streak++;
+      for (let k = targetDay; k >= 1; k--) {
+        const dCount = habits.filter(h => h.entries[`day-${k}`]).length;
+        if (dCount >= goals.daily) streak++;
         else break;
       }
-
       return { 
-        day: `D${h.day}`, 
-        daily: h.count, 
-        completedDetails: h.completedDetails,
-        missionStreak: streak,
-        weeklyVelocity: weeklyAvg,
-        prevCycle: prevCycleAvg
+        name: DAYS_NAMES[dow], 
+        completed: count, 
+        efficiency: Math.round((count / Math.max(1, habits.length)) * 100),
+        streak 
       };
     });
-  }, [habits, goals.daily]);
+  }, [habits, goals.daily, todayIdx, getDayOfWeekForDate]);
 
-  // --- AI Coaching ---
-  const callCoach = async () => {
-    triggerHaptic('medium');
-    setAiResponse({ content: '', loading: true });
+  const weeklySnapshotData = useMemo(() => {
+    const last7 = analyticsPayload.slice(-7);
+    return last7;
+  }, [analyticsPayload]);
+
+  const medals = useMemo<Medal[]>(() => {
+    const todayStreak = analyticsPayload[13]?.streak || 0;
+    const highPriorityToday = habits.filter(h => h.priority === 'HIGH' && h.daysOfWeek.includes(getDayOfWeekForDate(todayIdx)));
+    const highPriorityCompleted = highPriorityToday.filter(h => h.entries[`day-${todayIdx}`]);
+    
+    if (isFounder) {
+      return [
+        { id: 'seed', title: 'Seed Phase', desc: 'Initialize protocols.', icon: <Briefcase />, isUnlocked: habits.length > 0, progress: 100, metricLabel: 'ACTIVE' },
+        { id: 'series-a', title: 'Series A', desc: 'Maintain 70% efficiency.', icon: <TrendingUp />, isUnlocked: accuracyRate >= 70, progress: Math.min(100, (accuracyRate / 70) * 100), metricLabel: `${accuracyRate}%/70%` },
+      ] as any;
+    }
+
+    return [
+      { id: 'iron-focus', title: 'Iron Focus', desc: '80% accuracy over 30 days.', icon: <Award />, isUnlocked: accuracyRate >= 80, progress: Math.min(100, (accuracyRate / 80) * 100), metricLabel: `${accuracyRate}%/80%` },
+      { id: 'vanguard', title: 'Vanguard Shield', desc: 'Complete all HIGH priority goals today.', icon: <ShieldCheck />, isUnlocked: highPriorityToday.length > 0 && highPriorityCompleted.length === highPriorityToday.length, progress: highPriorityToday.length > 0 ? (highPriorityCompleted.length / highPriorityToday.length) * 100 : 0, metricLabel: `${highPriorityCompleted.length}/${highPriorityToday.length}` },
+    ];
+  }, [accuracyRate, habits, todayIdx, analyticsPayload, getDayOfWeekForDate, isFounder]);
+
+  const filteredHabits = useMemo(() => habits.filter(h => selectedCat === 'ALL' || h.category === selectedCat), [habits, selectedCat]);
+
+  const groupedHabits = useMemo(() => {
+    const groups: Record<string, Habit[]> = {};
+    filteredHabits.forEach(h => {
+      if (!groups[h.category]) groups[h.category] = [];
+      groups[h.category].push(h);
+    });
+    return groups;
+  }, [filteredHabits]);
+
+  // JARVIS Logic
+  const talkToJarvis = async (msg?: string) => {
+    const input = msg || jarvisInput;
+    if (!input.trim()) return;
+    initAudio(); playTacticalSound('click');
+    setJarvisThinking(true);
+    const newHistory: JarvisMessage[] = [...jarvisHistory, { role: 'user', content: input, timestamp: Date.now() }];
+    setJarvisHistory(newHistory);
+    setJarvisInput('');
+
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-      const prompt = `User: ${profile?.name || 'Operative'}. Efficiency ${accuracyRate}%. Goal: ${goals.daily} daily. Today: ${dailyProgress}. Streak: ${analyticsPayload[todayIdx-1]?.missionStreak || 0}. Provide a 15-word mission directive for extreme ownership.`;
-      const result = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-        config: { systemInstruction: "You are an Elite Tactical Strategist. Use military brevity. Address the user by name if possible." }
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const stats = `Mode: ${profile?.mode}. Efficiency: ${accuracyRate}%. Goal: ${dailyProgressPercentage}%. Habits: ${habits.length}. Name: ${profile?.name}.`;
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents: `Previous history: ${JSON.stringify(newHistory.slice(-5))}. Stats: ${stats}. User input: ${input}. You are ${isFounder ? 'JARVIS' : 'Nexus AI'}. Respond tactically and concisely.`,
+        config: { systemInstruction: "Sophisticated AI assistant.", thinkingConfig: { thinkingBudget: 16000 } }
       });
-      setAiResponse({ content: result.text || "PROTOCOL ERROR.", loading: false });
+      setJarvisHistory([...newHistory, { role: 'assistant', content: response.text || 'Interface fail.', timestamp: Date.now() }]);
+      playTacticalSound('success', profile?.completionSound);
     } catch (e) {
-      setAiResponse({ content: "COMS LINK DOWN. DISCIPLINE IS THE ONLY SOLUTION.", loading: false });
+      setJarvisHistory([...newHistory, { role: 'assistant', content: 'Connection failure.', timestamp: Date.now() }]);
+    } finally {
+      setJarvisThinking(false);
     }
   };
 
-  // --- Render Components ---
-
-  if (!profile) {
-    return <Onboarding onComplete={(p) => setProfile({ ...p, onboarded: false })} />;
-  }
-
-  if (!profile.onboarded) {
-    return <Introduction onFinish={() => setProfile({ ...profile, onboarded: true })} userName={profile.name} />;
-  }
+  if (!profile) return (
+    <div className="fixed inset-0 bg-black z-[9999] flex flex-col items-center justify-center p-8 overflow-y-auto">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-lg space-y-12">
+        <div className="text-center space-y-4">
+          <div className="w-20 h-20 bg-blue-600 rounded-[2rem] mx-auto flex items-center justify-center text-white shadow-[0_0_50px_rgba(37,99,235,0.3)]">
+            <Cpu size={40} />
+          </div>
+          <h1 className="text-4xl font-black italic tracking-tighter text-white uppercase leading-none">INITIALIZE <span className="text-blue-500">NEXUS</span></h1>
+          <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.4em]">Select Operations Interface</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+           <button onClick={() => { (document.getElementById('choice-normal') as any).classList.add('border-blue-500'); (document.getElementById('choice-founder') as any).classList.remove('border-amber-500'); }} id="choice-normal" className="p-8 bg-zinc-900 border border-white/5 rounded-[2.5rem] text-left hover:border-blue-500 transition-all active:scale-95">
+              <Activity size={24} className="text-blue-500 mb-6" />
+              <h3 className="text-xl font-black text-white italic mb-2 uppercase">LIFESTYLE</h3>
+              <p className="text-xs text-zinc-500 leading-relaxed">Habit tracking and wellness metrics.</p>
+           </button>
+           <button onClick={() => { (document.getElementById('choice-founder') as any).classList.add('border-amber-500'); (document.getElementById('choice-normal') as any).classList.remove('border-blue-500'); }} id="choice-founder" className="p-8 bg-zinc-900 border border-white/5 rounded-[2.5rem] text-left hover:border-amber-500 transition-all active:scale-95">
+              <Briefcase size={24} className="text-amber-500 mb-6" />
+              <h3 className="text-xl font-black text-white italic mb-2 uppercase">FOUNDER</h3>
+              <p className="text-xs text-zinc-500 leading-relaxed">Aggressive focus on strategic growth.</p>
+           </button>
+        </div>
+        <div className="space-y-4">
+          <input id="on-name" placeholder="IDENTIFIER" className="w-full bg-zinc-900 border border-white/5 rounded-2xl px-6 py-5 text-white font-black uppercase outline-none text-center" />
+          <button onClick={() => {
+            const n = (document.getElementById('on-name') as HTMLInputElement).value;
+            const mode = document.querySelector('.border-blue-500') ? 'NORMAL' : 'FOUNDER';
+            if (n) setProfile({ name: n, avatar: AVATARS[0], onboarded: true, completionSound: 'DIGITAL', reminderSound: 'BEAM', theme: 'DARK', mode: mode as AppMode });
+          }} className="w-full py-6 bg-white text-black rounded-2xl font-black uppercase tracking-widest hover:brightness-90 transition-all shadow-2xl">UPLINK</button>
+        </div>
+      </motion.div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#f0f0f0] font-sans pb-[120px] antialiased overflow-x-hidden">
+    <div className={`min-h-screen ${colors.bg} ${colors.text} font-sans pb-[120px] antialiased transition-colors duration-700 overflow-x-hidden`}>
+      <div className={`fixed top-0 left-0 w-full h-[2px] ${colors.jarvis} opacity-30 shadow-[0_0_20px_rgba(255,255,255,0.4)] z-[200] animate-scan pointer-events-none`} />
       
-      {/* Background FX */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:20px_20px] sm:bg-[size:32px_32px]"></div>
-        <div className="absolute top-[-20%] right-[-10%] w-[120vw] h-[120vw] bg-blue-600/5 blur-[120px] rounded-full opacity-60"></div>
-      </div>
-
-      <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-8 safe-pt space-y-8 sm:space-y-12">
-        
-        {/* Profile Header */}
-        <header className="flex flex-col gap-6 pt-4 sm:pt-12 relative">
+      <div className="relative z-10 max-w-6xl mx-auto px-6 pt-12 space-y-12">
+        <header className="flex flex-col gap-10">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <motion.button 
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setIsEditingProfile(true)}
-                className="w-12 h-12 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-2xl"
-              >
+            <div className="flex items-center gap-5">
+              <button onClick={() => setIsEditingProfile(true)} className={`w-16 h-16 rounded-2xl ${colors.card} border ${colors.border} flex items-center justify-center text-3xl shadow-2xl relative`}>
                 {profile.avatar}
-              </motion.button>
+                <div className={`absolute -bottom-1 -right-1 w-4 h-4 ${isFounder ? 'bg-amber-500' : 'bg-blue-500'} border-4 ${profile.theme === 'DARK' ? 'border-[#0a0a0b]' : 'border-white'} rounded-full`} />
+              </button>
               <div>
-                <p className="text-[10px] font-black tracking-widest text-zinc-600 uppercase">OPERATIVE LOGS</p>
-                <h2 className="text-xl font-black text-white italic tracking-tighter uppercase">{profile.name}</h2>
+                <p className={`text-[9px] font-black uppercase tracking-widest ${colors.accentText}`}>{profile.mode} CONSOLE</p>
+                <h2 className="text-2xl font-black italic tracking-tighter uppercase leading-none">{profile.name}</h2>
               </div>
             </div>
-            <div className="px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
-              <p className="text-[9px] font-black tracking-[0.2em] text-blue-500 uppercase">{currentMonthName}</p>
-            </div>
+            <button onClick={() => setJarvisActive(true)} className={`flex items-center gap-3 px-6 py-4 ${colors.card} border ${colors.border} rounded-2xl hover:bg-white/5 transition-all shadow-lg`}>
+              <Bot size={20} className={isFounder ? "text-amber-500" : "text-blue-500"} />
+              <span className="text-[10px] font-black tracking-widest uppercase">JARVIS</span>
+            </button>
           </div>
 
-          <div className="text-center space-y-1">
-            <h1 className="text-5xl sm:text-7xl xl:text-8xl font-black italic tracking-tighter uppercase text-white leading-none">TASK CHASER</h1>
-          </div>
-          
-          <div className="flex gap-2 w-full max-w-sm mx-auto">
-             <button onClick={() => setIsSettingGoals(true)} className="flex-1 px-4 py-4 bg-[#0e0e10] border border-white/5 rounded-2xl flex items-center justify-center gap-2 hover:bg-zinc-900 transition-all text-[10px] font-black uppercase tracking-widest text-zinc-400 active:scale-95">
-                <Settings2 size={16} /> CALIBRATE
-              </button>
-             <button onClick={callCoach} className="flex-[1.5] px-6 py-4 bg-white text-black rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-xl">
-                <Sparkles size={16} /> ADVISOR
-              </button>
-          </div>
+          {/* New Situation Room Dashboard Section (Reference Image Inspired) */}
+          <section className="space-y-6">
+            <div className="flex items-center gap-2 px-2">
+               <AreaChartIcon size={16} className={colors.accentText} />
+               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40">Situation Room / Analytics</h3>
+            </div>
+            
+            <div className={`grid grid-cols-1 xl:grid-cols-3 gap-6`}>
+               {/* Main Trend Card */}
+               <div className={`xl:col-span-2 ${colors.card} border ${colors.border} rounded-[2.5rem] p-8 space-y-8 shadow-2xl relative overflow-hidden`}>
+                  <div className="flex items-center justify-between relative z-10">
+                    <div>
+                      <h4 className="text-lg font-black italic uppercase tracking-wider">Overall Performance</h4>
+                      <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">14-Day Tactical Efficiency Delta</p>
+                    </div>
+                    <div className="flex gap-4 items-center">
+                      <ProgressRingLarge percentage={dailyProgressPercentage} color={isFounder ? 'stroke-amber-500' : 'stroke-blue-500'} theme={profile.theme} />
+                    </div>
+                  </div>
+                  
+                  <div className="h-48 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={analyticsPayload}>
+                        <defs>
+                          <linearGradient id="colorEff" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={isFounder ? '#fbbf24' : '#3b82f6'} stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor={isFounder ? '#fbbf24' : '#3b82f6'} stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke={profile.theme === 'DARK' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)'} vertical={false} />
+                        <XAxis dataKey="name" hide />
+                        <YAxis hide />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#000', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '10px' }}
+                          itemStyle={{ fontWeight: 'black', textTransform: 'uppercase' }}
+                        />
+                        <Area type="monotone" dataKey="efficiency" stroke={isFounder ? '#fbbf24' : '#3b82f6'} fillOpacity={1} fill="url(#colorEff)" strokeWidth={3} />
+                        <Area type="monotone" dataKey="completed" stroke={isFounder ? '#ffffff' : '#4ade80'} fill="transparent" strokeWidth={2} strokeDasharray="5 5" opacity={0.3} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+               </div>
+
+               {/* Daily Mini-Stats Cluster */}
+               <div className={`grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-2 gap-4 h-full`}>
+                  {weeklySnapshotData.map((d, i) => (
+                    <MiniDailySnapshot key={i} day={d.name} percentage={d.efficiency} color={isFounder ? 'stroke-amber-500' : 'stroke-blue-500'} theme={profile.theme} />
+                  ))}
+                  <div className={`${colors.card} border ${colors.border} rounded-3xl p-4 flex flex-col items-center justify-center space-y-2 opacity-50 hover:opacity-100 transition-opacity cursor-pointer`}>
+                     <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center"><ChevronRight size={18} /></div>
+                     <span className="text-[8px] font-black uppercase">Archive</span>
+                  </div>
+               </div>
+            </div>
+          </section>
         </header>
 
         <AnimatePresence mode="wait">
-          {activeView === 'OPERATIONS' && (
-            <motion.div key="ops" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-8 sm:space-y-16">
-              
-              {/* Stats HUD */}
-              <section className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-                {[
-                  { label: 'EFFICIENCY', val: `${accuracyRate}%`, icon: <Activity size={12} />, color: 'text-blue-500', ring: <ProgressRing percentage={accuracyRate} color="stroke-blue-500" /> },
-                  { label: 'DAILY QUOTA', val: `${dailyProgress}/${goals.daily}`, icon: <Target size={12} />, color: 'text-emerald-500', ring: <ProgressRing percentage={(dailyProgress / Math.max(1, goals.daily)) * 100} color="stroke-emerald-500" /> },
-                  { label: 'WEEKLY TARGET', val: `${weeklyProgress}/${goals.weekly}`, icon: <Zap size={12} />, color: 'text-orange-500', ring: <ProgressRing percentage={(weeklyProgress / Math.max(1, goals.weekly)) * 100} color="stroke-orange-500" /> },
-                  { label: 'MONTHLY DELTA', val: `${accuracyDelta >= 0 ? '+' : ''}${accuracyDelta}%`, icon: <TrendingUp size={12} />, color: 'text-zinc-500', ring: <div className={`text-xs font-black italic ${accuracyDelta >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{accuracyDelta >= 0 ? 'UP' : 'DN'}</div> },
-                ].map((stat, i) => (
-                  <div key={i} className="bg-[#0e0e10]/60 backdrop-blur-md border border-white/5 p-4 rounded-2xl flex flex-col justify-between h-32 sm:h-36">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className={stat.color}>{stat.icon}</span>
-                        <p className="text-[7px] sm:text-[9px] font-black text-zinc-600 uppercase tracking-widest truncate">{stat.label}</p>
-                      </div>
-                      <h4 className="text-lg sm:text-2xl font-black text-white italic leading-none">{stat.val}</h4>
-                    </div>
-                    <div className="flex justify-end">{stat.ring}</div>
-                  </div>
-                ))}
-              </section>
-
-              {/* Density Chart */}
-              <div className="bg-[#0e0e10]/80 backdrop-blur-3xl border border-white/5 p-4 sm:p-10 rounded-[2rem] h-[400px] sm:h-[500px] flex flex-col group relative overflow-hidden">
-                <div className="flex items-center justify-between mb-8 sm:mb-12 relative z-10">
-                  <div className="flex items-center gap-2">
-                    <div className="w-1 h-4 bg-blue-600 rounded-full" />
-                    <h4 className="text-[9px] sm:text-[11px] font-black tracking-[0.2em] text-white uppercase">Execution Density Profile</h4>
-                  </div>
+          {activeView === 'OPS' && (
+            <motion.div key="ops" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-10">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between px-2">
+                   <div className="flex items-center gap-2 opacity-50"><Filter size={12} /><span className="text-[9px] font-black uppercase tracking-widest">Sector Analysis</span></div>
+                   <button onClick={() => setIsAdding(true)} className={`flex items-center gap-2 text-[9px] font-black uppercase tracking-widest ${colors.accentText} hover:brightness-125`}><Plus size={14} /> INITIALIZE UNIT</button>
                 </div>
-                <div className="flex-1 w-full relative z-10 touch-pan-x">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={analyticsPayload} margin={{ top: 0, right: 0, left: -45, bottom: 0 }}>
-                      <CartesianGrid vertical={false} stroke="#ffffff03" strokeDasharray="3 3" />
-                      <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#27272a', fontSize: 8, fontWeight: 800}} dy={10} />
-                      <YAxis hide domain={[0, habits.length + 1]} />
-                      <Tooltip content={<TacticalTooltip dailyGoal={goals.daily} />} cursor={{ fill: '#ffffff05' }} trigger="hover" allowEscapeViewBox={{ x: false, y: true }} />
-                      <Area type="monotone" dataKey="prevCycle" fill="#18181b" stroke="#27272a" strokeWidth={1} fillOpacity={0.2} activeDot={false} />
-                      <Bar dataKey="daily" barSize={10} radius={[2, 2, 0, 0]}>
-                        {analyticsPayload.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={index + 1 === todayIdx ? '#fff' : (entry.daily >= goals.daily ? '#2563eb' : '#27272a')} />
-                        ))}
-                      </Bar>
-                      <Line type="monotone" dataKey="weeklyVelocity" stroke="#fff" strokeWidth={1.5} dot={{ r: 1.5, fill: '#fff' }} activeDot={{ r: 5, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} />
-                      <Brush dataKey="day" height={30} stroke="#18181b" fill="#050505" className="tactical-brush" startIndex={Math.max(0, todayIdx - 5)} endIndex={Math.min(29, todayIdx + 5)} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
+                <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
+                  {['ALL', ...categories].map(v => (
+                    <button 
+                      key={v} 
+                      onClick={() => { setSelectedCat(v); initAudio(); playTacticalSound('click'); }}
+                      className={`px-5 py-4 rounded-2xl text-[9px] font-black border transition-all whitespace-nowrap
+                        ${selectedCat === v ? `bg-white text-black border-white shadow-xl scale-105` : `${colors.card} ${colors.border} text-zinc-500 hover:border-white/20`}`}
+                    >
+                      {v}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Habit List */}
-              <section className="space-y-6">
-                <div className="flex items-center justify-between px-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-1.5 h-6 bg-indigo-600 rounded-full" />
-                    <h2 className="text-xl sm:text-2xl font-black italic tracking-tighter uppercase text-white">Logic Lockdown</h2>
-                  </div>
-                  <button onClick={() => setIsAdding(true)} className="w-12 h-12 bg-white text-black rounded-xl flex items-center justify-center active:scale-90 transition-all shadow-lg">
-                    <Plus size={24} strokeWidth={3} />
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  {habits.map((habit) => (
-                    <motion.div 
-                      layout 
-                      key={habit.id} 
-                      className="bg-[#0e0e10]/60 backdrop-blur-xl border border-white/5 rounded-2xl p-4 sm:p-6 transition-all group overflow-hidden relative"
-                    >
-                      <div className="flex flex-col gap-6 relative z-10">
-                        <div className="flex items-center gap-4">
-                          <motion.div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl flex items-center justify-center text-xl sm:text-2xl border border-white/5 bg-zinc-900 transition-all duration-500">
-                            {habit.icon}
-                          </motion.div>
-                          <div className="flex-1 min-w-0">
-                            {editingHabitId === habit.id ? (
-                              <input 
-                                autoFocus
-                                className="bg-black border border-blue-500/50 rounded px-2 py-1 text-white text-sm font-black w-full outline-none"
-                                defaultValue={habit.text}
-                                onBlur={(e) => updateHabitText(habit.id, e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && updateHabitText(habit.id, (e.target as HTMLInputElement).value)}
-                              />
-                            ) : (
-                              <h4 onClick={() => setEditingHabitId(habit.id)} className="text-sm sm:text-lg font-black text-white italic tracking-wider uppercase truncate mb-1 cursor-text hover:text-blue-400 transition-colors">{habit.text}</h4>
-                            )}
-                            <div className="flex items-center gap-2">
-                              <div className="h-1 flex-1 max-w-[120px] bg-zinc-900 rounded-full overflow-hidden">
-                                <motion.div animate={{ width: `${getEfficacy(habit)}%` }} className="h-full bg-blue-600" />
+              <div className="space-y-10 pb-20">
+                {Object.entries(isFounder ? { 'CORE STRATEGY': filteredHabits } : groupedHabits).map(([sector, sectorHabits]) => (
+                  <div key={sector} className="space-y-6">
+                    <div className="flex items-center gap-3 px-2">
+                      <div className={`w-1 h-4 ${isFounder ? 'bg-amber-500' : 'bg-blue-600'} rounded-full`} />
+                      <h3 className="text-[10px] font-black tracking-[0.3em] uppercase opacity-40">{sector} UNIT</h3>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {(sectorHabits as Habit[]).map((habit) => (
+                        <motion.div layout key={habit.id} className={`${colors.card} border ${habit.priority === 'HIGH' ? (isFounder ? 'border-amber-500/20' : 'border-rose-500/20') : colors.border} p-8 rounded-[2.5rem] group relative overflow-hidden shadow-2xl`}>
+                          <div className="flex flex-col gap-8 relative z-10">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-6">
+                                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl border ${habit.priority === 'HIGH' ? (isFounder ? 'bg-amber-500 text-black' : 'bg-rose-600 text-white') : 'bg-black/20 border-white/10'}`}>
+                                  {habit.icon}
+                                </div>
+                                <div>
+                                    <h4 onClick={() => setEditingHabit(habit)} className={`text-xl font-black italic uppercase tracking-wider cursor-pointer hover:${colors.accentText}`}>{habit.text}</h4>
+                                    <div className="flex items-center gap-2">
+                                      <PriorityBadge level={habit.priority} mode={profile.mode} colors={colors} />
+                                    </div>
+                                </div>
                               </div>
-                              <span className="text-[7px] font-black text-zinc-600 uppercase">{getEfficacy(habit)}% COMPLIANCE</span>
+                              <button onClick={() => setEditingHabit(habit)} className="p-2 opacity-20 group-hover:opacity-100"><Edit2 size={16} /></button>
+                            </div>
+
+                            <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+                               {[0,1,2,3].map(wIdx => (
+                                 <div key={wIdx} className="flex gap-1 p-1 bg-black/40 rounded-2xl">
+                                   {Array.from({ length: 7 }).map((_, dIdx) => {
+                                     const dNum = wIdx * 7 + dIdx + 1;
+                                     if (dNum > 30) return null;
+                                     const isDone = habit.entries[`day-${dNum}`];
+                                     const isToday = dNum === todayIdx;
+                                     const dow = getDayOfWeekForDate(dNum);
+                                     const isScheduled = habit.daysOfWeek.includes(dow);
+                                     return (
+                                       <button 
+                                         key={dNum} disabled={!isToday || !isScheduled}
+                                         onClick={() => {
+                                           initAudio(); triggerHaptic('medium');
+                                           const val = !habit.entries[`day-${dNum}`];
+                                           if (val) playTacticalSound('success', profile.completionSound);
+                                           setHabits(habits.map(h => h.id === habit.id ? { ...h, entries: { ...h.entries, [`day-${dNum}`]: val } } : h));
+                                         }}
+                                         className={`w-9 h-9 rounded-lg flex items-center justify-center text-[7px] font-black border transition-all
+                                           ${isDone && isToday ? (isFounder ? 'bg-amber-500 text-black' : 'bg-blue-600 text-white') : ''}
+                                           ${!isDone && isToday && isScheduled ? 'border-zinc-700 text-zinc-500' : ''}
+                                           ${!isScheduled ? 'opacity-5 grayscale pointer-events-none' : ''}
+                                         `}
+                                       >
+                                         {isDone ? <Zap size={12} fill="currentColor" /> : (isToday ? 'GO' : dNum)}
+                                       </button>
+                                     );
+                                   })}
+                                 </div>
+                               ))}
                             </div>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => setEditingHabitId(habit.id)} className="p-2 text-zinc-800 hover:text-blue-500 transition-colors"><Edit2 size={14} /></button>
-                            <button onClick={() => deleteHabit(habit.id)} className="p-2 text-zinc-800 hover:text-rose-500 transition-colors"><Trash2 size={16} /></button>
-                          </div>
-                        </div>
-
-                        <div className="overflow-x-auto scrollbar-hide touch-pan-x">
-                          <div className="flex gap-4 pb-1 min-w-max">
-                            {[0, 1, 2, 3].map(weekIdx => (
-                              <div key={weekIdx} className="flex gap-1.5">
-                                {Array.from({ length: 7 }).map((_, dIdx) => {
-                                  const dayNum = weekIdx * 7 + dIdx + 1;
-                                  if (dayNum > 30) return null;
-                                  const isDone = habit.entries[`day-${dayNum}`];
-                                  const isToday = dayNum === todayIdx;
-                                  return (
-                                    <motion.button 
-                                      key={dayNum} 
-                                      disabled={!isToday}
-                                      onClick={() => toggleHabitDate(habit.id, dayNum)}
-                                      whileTap={isToday ? { scale: 0.9 } : {}}
-                                      className={`w-10 h-10 rounded-lg flex flex-col items-center justify-center text-[8px] font-black border transition-all relative overflow-hidden
-                                        ${isToday ? 'bg-zinc-900 border-blue-500/50 text-blue-500' : 'bg-black/20 border-white/5 text-zinc-800'}
-                                        ${isDone && isToday ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]' : ''}
-                                        ${isDone && !isToday ? 'bg-zinc-800 border-zinc-700 text-zinc-400 opacity-60' : ''}
-                                      `}
-                                    >
-                                      <span className="text-[5px] opacity-40 mb-0.5">{dayNum}</span>
-                                      {isDone ? <Zap size={10} fill="currentColor" /> : (isToday ? 'ACT' : <Lock size={8} className="opacity-10" />)}
-                                    </motion.button>
-                                  );
-                                })}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </section>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </motion.div>
           )}
 
           {activeView === 'MERIT' && (
-            <motion.div key="merit" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-4 space-y-6">
-              <section className="bg-[#0e0e10]/60 border border-white/5 rounded-[2rem] p-8 relative overflow-hidden">
-                <h2 className="text-3xl font-black italic uppercase text-white tracking-tighter mb-10">Merit Awards</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {[
-                    { title: 'Obsidian Resolve', desc: '14-day absolute protocol.', locked: accuracyRate < 90 },
-                    { title: 'Zero Defect', desc: 'Complete 30-day mission.', locked: true },
-                    { title: 'Architect', desc: '10+ concurrent protocols.', locked: habits.length < 10 },
-                    { title: 'Integrity', desc: 'Maintain +10% efficiency delta.', locked: accuracyDelta < 10 },
-                  ].map((award, i) => (
-                    <div key={i} className="bg-black/40 border border-white/5 p-6 rounded-2xl flex items-center gap-4">
-                       <div className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-all ${award.locked ? 'bg-zinc-900 border-white/5 text-zinc-800' : 'bg-blue-600/10 border-blue-600/30 text-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.1)]'}`}>
-                          {award.locked ? <Lock size={18} /> : <Trophy size={18} />}
-                       </div>
-                       <div className="flex-1">
-                          <h4 className={`text-xs font-black uppercase tracking-widest ${award.locked ? 'text-zinc-700' : 'text-white'}`}>{award.title}</h4>
-                          <p className="text-[7px] font-bold text-zinc-700 uppercase mt-0.5">{award.desc}</p>
-                       </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
+            <motion.div key="merit" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-12 pb-32">
+               <section className={`${colors.card} border ${colors.border} rounded-[3rem] p-12 relative overflow-hidden shadow-2xl`}>
+                  <div className="flex items-center gap-6 mb-12 relative z-10">
+                     <div className={`w-16 h-16 rounded-[1.5rem] ${isFounder ? 'bg-amber-500 text-black' : 'bg-blue-600 text-white'} flex items-center justify-center shadow-2xl`}>
+                        <Award size={32} />
+                     </div>
+                     <div>
+                        <h2 className="text-4xl font-black italic uppercase tracking-tighter">{isFounder ? 'Strategic Hall' : 'Combat Medals'}</h2>
+                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.3em]">Performance Milestones</p>
+                     </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+                    {medals.map((m) => (
+                      <div key={m.id} className={`p-8 rounded-[2.5rem] border ${m.isUnlocked ? 'bg-white/5 border-white/10 shadow-xl' : 'opacity-30 grayscale border-white/5'} transition-all`}>
+                        <div className="flex items-start gap-6 mb-6">
+                           <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${m.isUnlocked ? (isFounder ? 'bg-amber-500 text-black' : 'bg-blue-600 text-white') : 'bg-zinc-900'}`}>
+                             {m.isUnlocked ? React.cloneElement(m.icon as React.ReactElement<any>, { size: 32 }) : <Lock size={24} />}
+                           </div>
+                           <div className="flex-1">
+                              <h4 className="text-xl font-black italic uppercase">{m.title}</h4>
+                              <p className="text-[9px] font-bold opacity-40 uppercase tracking-widest">{m.desc}</p>
+                           </div>
+                        </div>
+                        <div className="space-y-2">
+                           <div className="flex justify-between text-[8px] font-black uppercase opacity-60"><span>Intensity</span><span>{m.metricLabel}</span></div>
+                           <div className="h-1.5 w-full bg-black/40 rounded-full overflow-hidden">
+                              <motion.div initial={{ width: 0 }} animate={{ width: `${m.progress}%` }} className={`h-full ${isFounder ? 'bg-amber-500' : 'bg-blue-600'}`} />
+                           </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+               </section>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Modals & Overlays */}
       <AnimatePresence>
-        {aiResponse && (
-          <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setAiResponse(null)} className="absolute inset-0 bg-black/90 backdrop-blur-xl" />
-            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="bg-[#0e0e10] border-t sm:border border-white/10 p-8 rounded-t-[2.5rem] sm:rounded-[2.5rem] w-full max-w-lg relative z-10">
-              <div className="space-y-8">
+        {jarvisActive && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-end">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setJarvisActive(false)} className="absolute inset-0 bg-black/80 backdrop-blur-xl" />
+            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25 }} className={`w-full max-w-lg h-full ${colors.bg} border-l ${colors.border} relative z-10 flex flex-col`}>
+              <div className={`p-8 border-b ${colors.border} flex items-center justify-between`}>
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-blue-600/20 rounded-xl flex items-center justify-center text-blue-500"><Sparkles size={20} className="animate-pulse" /></div>
-                  <h2 className="text-lg font-black italic uppercase text-white tracking-widest">Directive</h2>
-                </div>
-                {aiResponse.loading ? (
-                  <div className="py-12 flex flex-col items-center gap-4"><Loader2 className="animate-spin text-blue-600" size={32} /></div>
-                ) : (
-                  <p className="text-xl sm:text-2xl font-black italic text-zinc-200 leading-tight">"{aiResponse.content}"</p>
-                )}
-                <button onClick={() => setAiResponse(null)} className="w-full py-5 bg-white text-black text-[10px] font-black uppercase tracking-widest rounded-xl active:scale-95 transition-all shadow-xl font-bold">ACKNOWLEDGE</button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {isEditingProfile && (
-          <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsEditingProfile(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="bg-[#0e0e10] p-8 rounded-t-[2.5rem] sm:rounded-[2.5rem] w-full max-w-sm border-t border-white/10 relative z-10">
-              <h3 className="text-lg font-black uppercase italic text-white mb-8">Personalize Profile</h3>
-              <div className="space-y-6">
-                <div className="flex flex-wrap gap-2 justify-center mb-6">
-                  {AVATARS.map(a => (
-                    <button key={a} onClick={() => setProfile({ ...profile, avatar: a })} className={`w-12 h-12 rounded-xl text-xl border transition-all ${profile.avatar === a ? 'bg-blue-600 border-blue-400 scale-110' : 'bg-black border-white/5'}`}>{a}</button>
-                  ))}
-                </div>
-                <input 
-                  value={profile.name} 
-                  onChange={(e) => setProfile({ ...profile, name: e.target.value })} 
-                  className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-black uppercase text-sm outline-none focus:border-blue-600"
-                />
-                <div className="flex flex-col gap-2">
-                  <button onClick={() => setIsEditingProfile(false)} className="w-full py-4 bg-white text-black rounded-xl text-[10px] font-black uppercase">SAVE CHANGES</button>
-                  <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="w-full py-4 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2"><LogOut size={14} /> WIPE ALL DATA</button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Goal Modal */}
-      <AnimatePresence>
-        {isSettingGoals && (
-          <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsSettingGoals(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="bg-[#0e0e10] p-8 rounded-t-[2.5rem] sm:rounded-[2.5rem] w-full max-w-sm border-t border-white/10 relative z-10">
-              <h3 className="text-lg font-black italic uppercase text-white mb-8 text-center">Protocol Calibration</h3>
-              <div className="space-y-8">
-                <div className="space-y-4">
-                   <div className="flex justify-between items-center px-1">
-                      <p className="text-[10px] font-black text-zinc-500 uppercase">Daily Task Quota</p>
-                      <span className="text-lg font-black text-blue-500">{goals.daily}</span>
+                   <div className={`w-12 h-12 ${isFounder ? 'bg-amber-500 text-black' : 'bg-blue-600 text-white'} rounded-2xl flex items-center justify-center`}>
+                      <Bot size={24} className={jarvisThinking ? 'animate-pulse' : ''} />
                    </div>
-                   <input type="range" min="1" max={Math.max(1, habits.length)} step="1" value={goals.daily} onChange={(e) => updateGoals({ daily: parseInt(e.target.value) })} className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                   <h3 className="text-xl font-black italic uppercase tracking-widest">{isFounder ? 'JARVIS' : 'NEXUS'}</h3>
                 </div>
-                <button onClick={() => setIsSettingGoals(false)} className="w-full py-5 bg-zinc-900 border border-white/5 text-white text-[10px] font-black uppercase tracking-widest rounded-xl active:scale-95 transition-all">CLOSE</button>
+                <button onClick={() => setJarvisActive(false)} className="p-3 text-zinc-500 hover:text-white"><X size={24} /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-hide">
+                {jarvisHistory.map((m, i) => (
+                  <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                    <div className={`max-w-[85%] p-6 rounded-[2rem] ${m.role === 'user' ? `${colors.accentBg} text-white` : `${colors.card} border ${colors.border} text-zinc-200`}`}>
+                       <p className="text-sm font-medium leading-relaxed">{m.content}</p>
+                    </div>
+                    <span className="text-[8px] font-bold uppercase opacity-20 mt-2">{new Date(m.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                ))}
+                {jarvisThinking && <div className="text-[9px] font-black uppercase tracking-widest animate-pulse ml-2 opacity-50">Processing satellite link...</div>}
+              </div>
+              <div className={`p-8 border-t ${colors.border} space-y-4`}>
+                <div className="relative">
+                  <input value={jarvisInput} onChange={e => setJarvisInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && talkToJarvis()} placeholder="COMMAND..." className={`w-full ${colors.card} border ${colors.border} rounded-2xl px-8 py-6 text-white font-black uppercase outline-none focus:border-white pr-20`} />
+                  <button onClick={() => talkToJarvis()} className={`absolute right-3 top-3 bottom-3 px-5 ${isFounder ? 'bg-amber-500 text-black' : 'bg-blue-600 text-white'} rounded-xl transition-all active:scale-95`}><Zap size={20} fill="currentColor" /></button>
+                </div>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Adding Modal */}
-      <AnimatePresence>
-        {isAdding && (
-          <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAdding(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="bg-[#0e0e10] p-8 rounded-t-[2.5rem] sm:rounded-[2.5rem] w-full max-w-sm border-t border-white/10 relative z-10">
-              <h3 className="text-lg font-black italic uppercase text-white mb-8">New Protocol</h3>
-              <form onSubmit={addHabit} className="space-y-6">
-                <input autoFocus value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="PROTOCOL NAME..." className="w-full bg-black border border-white/10 rounded-xl px-5 py-4 text-sm font-black uppercase focus:border-blue-600 outline-none text-white transition-all" />
-                <button type="submit" className="w-full py-4 bg-white text-black rounded-xl text-[9px] font-black uppercase font-bold">COMMISSION</button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-[500] safe-pb px-4 pb-4">
-        <div className="max-w-md mx-auto bg-[#0e0e10]/95 backdrop-blur-3xl border border-white/10 rounded-[2rem] p-2 flex items-center justify-around shadow-2xl relative">
-          <button onClick={() => { triggerHaptic(); setActiveView('OPERATIONS'); }} className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-full transition-all relative ${activeView === 'OPERATIONS' ? 'text-blue-500' : 'text-zinc-700'}`}>
-            <BarChart3 size={20} />
-            <span className="text-[7px] font-black tracking-widest uppercase">OPS</span>
-            {activeView === 'OPERATIONS' && <motion.div layoutId="nav-bg" className="absolute inset-0 bg-blue-600/10 rounded-full z-[-1]" />}
-          </button>
-          
-          <button onClick={() => setIsAdding(true)} className="w-14 h-14 bg-white rounded-full flex items-center justify-center text-black shadow-xl active:scale-90 transition-all -mt-8 border-4 border-[#050505]">
-            <Plus size={24} strokeWidth={4} />
-          </button>
-          
-          <button onClick={() => { triggerHaptic(); setActiveView('MERIT'); }} className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-full transition-all relative ${activeView === 'MERIT' ? 'text-blue-500' : 'text-zinc-700'}`}>
-            <Trophy size={20} />
-            <span className="text-[7px] font-black tracking-widest uppercase">HONOR</span>
-            {activeView === 'MERIT' && <motion.div layoutId="nav-bg" className="absolute inset-0 bg-blue-600/10 rounded-full z-[-1]" />}
-          </button>
-        </div>
+      <nav className={`fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-sm h-20 ${colors.card}/80 backdrop-blur-2xl border ${colors.border} rounded-[2.5rem] flex items-center justify-between px-2 z-[500] shadow-2xl`}>
+        <button onClick={() => setActiveView('OPS')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${activeView === 'OPS' ? colors.accentText : 'text-zinc-600'}`}>
+          <Target size={22} /><span className="text-[8px] font-black uppercase">Ops</span>
+        </button>
+        <button onClick={() => setJarvisActive(true)} className={`flex-1 flex flex-col items-center gap-1 ${colors.accentText}`}>
+          <Bot size={22} className="animate-pulse" /><span className="text-[8px] font-black uppercase">AI</span>
+        </button>
+        <button onClick={() => setActiveView('MERIT')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${activeView === 'MERIT' ? colors.accentText : 'text-zinc-600'}`}>
+          <Award size={22} /><span className="text-[8px] font-black uppercase">Merit</span>
+        </button>
       </nav>
 
-    </div>
-  );
-};
-
-// --- Sub-screens ---
-
-const Onboarding = ({ onComplete }: { onComplete: (p: { name: string, avatar: string }) => void }) => {
-  const [name, setName] = useState('');
-  const [avatar, setAvatar] = useState('🥷');
-
-  return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 text-white relative overflow-hidden">
-      <div className="absolute top-[-20%] left-[-20%] w-[100vw] h-[100vw] bg-blue-600/10 blur-[150px] rounded-full" />
-      <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm space-y-12 relative z-10">
-        <div className="text-center space-y-4">
-           <div className="w-20 h-20 bg-blue-600/20 border border-blue-500/30 rounded-3xl flex items-center justify-center text-4xl mx-auto shadow-2xl shadow-blue-500/10">{avatar}</div>
-           <h1 className="text-4xl font-black italic tracking-tighter uppercase leading-none">IDENTITY SECURE</h1>
-           <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Enter operative designation</p>
+      {isAdding && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl">
+           <div className={`w-full max-w-lg ${colors.card} border ${colors.border} rounded-[3.5rem] p-10 shadow-2xl`}>
+              <h3 className="text-2xl font-black italic uppercase mb-10 tracking-widest">INITIALIZE UNIT</h3>
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const text = (e.target as any).vName.value;
+                const cat = (e.target as any).vCat.value;
+                if (!text) return;
+                const newH: Habit = { id: crypto.randomUUID(), text: text.toUpperCase(), icon: getIconForText(text), category: cat, entries: {}, reminders: [], priority: 'MEDIUM', frequency: 'DAILY', daysOfWeek: [0,1,2,3,4,5,6], createdAt: Date.now() };
+                setHabits([...habits, newH]); setIsAdding(false); playTacticalSound('success', profile.completionSound);
+              }} className="space-y-8">
+                <input name="vName" autoFocus placeholder="DESIGNATION..." className="w-full bg-black/40 border border-white/5 rounded-2xl px-6 py-5 text-white font-black uppercase outline-none focus:border-white transition-all" />
+                <div className="grid grid-cols-3 gap-2">
+                  {categories.map(v => (
+                    <label key={v} className="relative cursor-pointer">
+                      <input type="radio" name="vCat" value={v} defaultChecked={v === categories[0]} className="peer sr-only" />
+                      <div className={`py-4 text-center border ${colors.border} rounded-xl text-[7px] font-black uppercase peer-checked:${isFounder ? 'bg-amber-500 text-black' : 'bg-blue-600 text-white'}`}>{v}</div>
+                    </label>
+                  ))}
+                </div>
+                <button type="submit" className={`w-full py-6 ${isFounder ? 'bg-amber-500 text-black' : 'bg-blue-600 text-white'} rounded-2xl font-black uppercase tracking-widest hover:brightness-110 active:scale-95`}>COMMISSION</button>
+                <button type="button" onClick={() => setIsAdding(false)} className="w-full text-zinc-500 font-black uppercase text-[10px] tracking-widest py-2">CANCEL</button>
+              </form>
+           </div>
         </div>
+      )}
 
-        <div className="space-y-8">
-          <div className="flex justify-center gap-3">
-            {AVATARS.slice(0, 4).map(a => (
-              <button key={a} onClick={() => { triggerHaptic('light'); setAvatar(a); }} className={`w-12 h-12 rounded-xl text-xl border transition-all ${avatar === a ? 'bg-blue-600 border-blue-400 scale-110 shadow-lg' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}>{a}</button>
-            ))}
-          </div>
-          <div className="space-y-4">
-            <input 
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="YOUR NAME..."
-              className="w-full bg-black border border-white/10 rounded-2xl px-6 py-5 text-lg font-black uppercase tracking-widest text-center focus:border-blue-600 outline-none transition-all placeholder:text-zinc-800"
-            />
-            <button 
-              disabled={!name.trim()}
-              onClick={() => onComplete({ name, avatar })}
-              className="w-full py-5 bg-white text-black font-black uppercase tracking-widest rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-20 disabled:grayscale"
-            >
-              INITIALIZE LOGS <ArrowRight size={20} />
-            </button>
+      {isEditingProfile && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/95 backdrop-blur-3xl">
+           <div className={`w-full max-w-lg ${colors.card} border ${colors.border} rounded-[3rem] p-10`}>
+              <h3 className="text-xl font-black uppercase mb-8 tracking-widest">Configuration Matrix</h3>
+              <div className="space-y-8">
+                 <div className="flex gap-2 p-2 bg-black/40 rounded-2xl">
+                    <button onClick={() => setProfile({...profile, mode: 'NORMAL'})} className={`flex-1 py-4 rounded-xl text-[10px] font-black uppercase ${profile.mode === 'NORMAL' ? 'bg-blue-600 text-white' : 'text-zinc-600'}`}>LIFESTYLE</button>
+                    <button onClick={() => setProfile({...profile, mode: 'FOUNDER'})} className={`flex-1 py-4 rounded-xl text-[10px] font-black uppercase ${profile.mode === 'FOUNDER' ? 'bg-amber-500 text-black' : 'text-zinc-600'}`}>FOUNDER</button>
+                 </div>
+                 <div className="grid grid-cols-2 gap-3">
+                   <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="py-4 text-rose-500 text-[9px] font-black uppercase bg-rose-500/10 rounded-xl">TERMINATE SESSION</button>
+                   <button onClick={() => setIsEditingProfile(false)} className="py-4 bg-white text-black text-[9px] font-black uppercase rounded-xl">RESUME</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {editingHabit && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl">
+          <div className={`w-full max-w-lg ${colors.card} border ${colors.border} rounded-[3rem] p-10`}>
+             <h3 className="text-xl font-black uppercase mb-8 italic">DECOMMISSION / EDIT</h3>
+             <div className="space-y-6">
+                <button onClick={() => { setHabits(habits.filter(h => h.id !== editingHabit.id)); setEditingHabit(null); }} className="w-full py-5 bg-rose-500/20 text-rose-500 rounded-2xl font-black uppercase text-[11px] tracking-[0.3em]">PURGE UNIT</button>
+                <button onClick={() => setEditingHabit(null)} className="w-full text-zinc-500 font-black uppercase text-[10px] tracking-widest">CLOSE</button>
+             </div>
           </div>
         </div>
-      </motion.div>
+      )}
     </div>
   );
 };
 
-const Introduction = ({ userName, onFinish }: { userName: string, onFinish: () => void }) => {
-  const steps = [
-    { icon: <Target className="text-blue-500" />, title: "The Mission", desc: "Define your daily protocols. Every task completed is a victory in discipline." },
-    { icon: <BarChart3 className="text-indigo-500" />, title: "The Density Profile", desc: "Track execution velocity over 30 days. Visualize where you excel and where you lag." },
-    { icon: <Sparkles className="text-emerald-500" />, title: "Tactical Advisor", desc: "Gemini AI reviews your metrics and issues critical directives to keep you sharp." }
-  ];
-
-  return (
-    <div className="min-h-screen bg-[#050505] flex flex-col p-8 sm:p-20 text-white relative">
-      <div className="space-y-2 mt-12 sm:mt-0">
-        <p className="text-blue-500 text-xs font-black tracking-[0.3em] uppercase">System Initialized</p>
-        <h1 className="text-4xl sm:text-6xl font-black italic tracking-tighter uppercase leading-none">Welcome, {userName}</h1>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16 sm:mt-24">
-        {steps.map((s, i) => (
-          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.2 }} key={i} className="bg-zinc-900/40 border border-white/5 p-8 rounded-[2rem] space-y-6">
-            <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center">{s.icon}</div>
-            <div className="space-y-2">
-              <h3 className="text-lg font-black uppercase italic">{s.title}</h3>
-              <p className="text-sm text-zinc-500 font-medium leading-relaxed">{s.desc}</p>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      <div className="mt-auto pt-12 flex justify-end">
-        <button onClick={onFinish} className="px-10 py-5 bg-white text-black font-black uppercase tracking-widest rounded-2xl hover:scale-105 active:scale-95 transition-all flex items-center gap-4">
-          ENTER THE MATRIX <ChevronRight size={20} />
-        </button>
-      </div>
-    </div>
-  );
-};
-
-// --- Mount App ---
-const container = document.getElementById('root');
-if (container) {
-  const root = createRoot(container);
-  root.render(<DailyAchiever />);
-}
+createRoot(document.getElementById('root')!).render(<DailyAchiever />);
