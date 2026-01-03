@@ -1,5 +1,7 @@
 {
-  "description": "Nexus Suite: A high-performance productivity matrix with Lifestyle and Founder modes, featuring JARVIS AI assistant.",
-  "requestFramePermissions": [],
+  "description": "Nexus Suite: A high-performance productivity matrix with Lifestyle and Founder modes, featuring JARVIS AI assistant with real-time voice interaction.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
   "name": "NEXUS PERFORMANCE MATRIX"
 }
