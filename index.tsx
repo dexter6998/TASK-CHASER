@@ -40,9 +40,10 @@ import {
   ChevronRight,
   Monitor,
   ClipboardList,
-  AlertCircle
+  AlertCircle,
+  Waves
 } from 'lucide-react';
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ResponsiveContainer, 
@@ -184,6 +185,14 @@ const SystemMessage = ({ title, content, onClose, persona }: { title: string, co
     </motion.div>
   );
 };
+
+const VoiceWave = () => (
+  <div className="voice-wave">
+    {Array.from({ length: 5 }).map((_, i) => (
+      <div key={i} className="voice-bar" style={{ animationDelay: `${i * 0.1}s` }} />
+    ))}
+  </div>
+);
 
 const TaskChaser = () => {
   const [profile, setProfile] = useState<UserProfile | null>(() => {
@@ -351,28 +360,55 @@ const TaskChaser = () => {
         setIsProcessingVoice(true);
         const base64 = await blobToBase64(audioBlob);
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: [{ parts: [{ inlineData: { data: base64, mimeType: 'audio/webm' } }, { text: "JSON: name, category, priority (LOW, MEDIUM, HIGH), scheduleTime (HH:mm)." }] }],
-          config: { responseMimeType: "application/json" }
-        });
-        const result = JSON.parse(response.text);
-        setHabits([...habits, { 
-          id: crypto.randomUUID(), 
-          text: result.name.toUpperCase(), 
-          icon: '⚡', 
-          category: result.category, 
-          priority: result.priority || 'MEDIUM', 
-          entries: {},
-          scheduleTime: result.scheduleTime || '09:00'
-        }]);
-        setIsProcessingVoice(false);
-        setIsAdding(false);
-        speakAsPersona("MANIFESTED", "Objective successfully synced to neural link.");
+        
+        try {
+          const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: [{ 
+              parts: [
+                { inlineData: { data: base64, mimeType: 'audio/webm' } }, 
+                { text: "Extract the habit details from this audio command. Format as JSON with keys: name (uppercase), category (choose from WORK, HEALTH, GROWTH, ROUTINE), priority (choose from LOW, MEDIUM, HIGH), scheduleTime (HH:mm, 24h format). If no time is mentioned, default to 08:00." }
+              ] 
+            }],
+            config: { 
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  category: { type: Type.STRING },
+                  priority: { type: Type.STRING },
+                  scheduleTime: { type: Type.STRING }
+                },
+                required: ["name", "category", "priority", "scheduleTime"]
+              }
+            }
+          });
+          
+          const result = JSON.parse(response.text);
+          setHabits([...habits, { 
+            id: crypto.randomUUID(), 
+            text: result.name.toUpperCase(), 
+            icon: '⚡', 
+            category: result.category, 
+            priority: result.priority || 'MEDIUM', 
+            entries: {},
+            scheduleTime: result.scheduleTime || '08:00'
+          }]);
+          speakAsPersona("OBJECTIVE CAPTURED", `Syncing ${result.name} to operational grid.`);
+        } catch (error) {
+          console.error("AI Extraction failed:", error);
+          speakAsPersona("COMM LINK ERR", "Neural extraction failed. Manual input required.");
+        } finally {
+          setIsProcessingVoice(false);
+          setIsAdding(false);
+        }
       };
       mediaRecorder.start();
       setIsRecording(true);
-    } catch (err) { speakAsPersona("SYNC ERROR", "Microphone access denied."); }
+    } catch (err) { 
+      speakAsPersona("SYNC ERROR", "Microphone access denied. Uplink severed."); 
+    }
   };
 
   const stopVoiceCapture = () => {
@@ -432,6 +468,27 @@ const TaskChaser = () => {
         <AnimatePresence mode="wait">
           {activeView === 'DASHBOARD' && (
             <motion.div key="dash" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} className="space-y-16">
+              
+              {/* JARVIS Quick Action Section */}
+              <div className="flex flex-col md:flex-row gap-6">
+                <div className="flex-1 bg-gradient-to-br from-blue-600/20 to-transparent border border-blue-500/30 p-10 rounded-[3rem] flex items-center justify-between group hover:border-blue-500/50 transition-all">
+                   <div className="space-y-4">
+                      <div className="flex items-center gap-3">
+                         <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_10px_#3b82f6]" />
+                         <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">Neural Link Active</span>
+                      </div>
+                      <h2 className="text-3xl font-black italic uppercase text-white tracking-tighter">Voice Command Objective</h2>
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Speak naturally to add missions. "JARVIS, add a gym session tomorrow at 8 AM."</p>
+                   </div>
+                   <button 
+                    onClick={() => { setIsAdding(true); setTimeout(() => startVoiceCapture(), 500); }} 
+                    className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(59,130,246,0.5)] hover:scale-110 active:scale-95 transition-all"
+                   >
+                      <Mic size={32} />
+                   </button>
+                </div>
+              </div>
+
               {/* Performance Hub */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                 {[
@@ -488,35 +545,54 @@ const TaskChaser = () => {
                   </button>
                 </div>
                 <div className="space-y-5">
-                  {habits.map(h => (
-                    <div key={h.id} className="bg-zinc-950 border border-zinc-900 p-8 rounded-[2rem] flex flex-col md:flex-row md:items-center justify-between gap-10 group hover:border-zinc-700 transition-all">
-                      <div className="flex items-center gap-6 min-w-[280px]">
-                        <div className="w-16 h-16 bg-zinc-900 rounded-[1.5rem] flex items-center justify-center text-3xl shadow-inner border border-zinc-800 group-hover:scale-105 transition-transform">{h.icon}</div>
-                        <div>
-                          <h4 className="text-sm font-black uppercase tracking-widest text-white">{h.text}</h4>
-                          <div className="flex items-center gap-4 mt-2">
-                            <span className="text-[9px] font-bold text-zinc-600 uppercase bg-zinc-900 px-3 py-1 rounded-full">{h.category}</span>
-                            <div className="flex items-center gap-1.5">
-                              <Clock size={10} className="text-blue-500" />
-                              <span className="text-[9px] font-bold text-blue-500 uppercase">{h.scheduleTime || '09:00'}</span>
+                  {habits.map(h => {
+                    // Calculate 7-day progress indicator
+                    const weekProgress = Array.from({ length: 7 }).map((_, i) => {
+                      const day = todayIdx - (6 - i);
+                      return !!h.entries[`day-${day}`];
+                    });
+
+                    return (
+                      <div key={h.id} className="bg-zinc-950 border border-zinc-900 p-8 rounded-[2rem] flex flex-col md:flex-row md:items-center justify-between gap-10 group hover:border-zinc-700 transition-all">
+                        <div className="flex items-center gap-6 min-w-[280px]">
+                          <div className="w-16 h-16 bg-zinc-900 rounded-[1.5rem] flex items-center justify-center text-3xl shadow-inner border border-zinc-800 group-hover:scale-105 transition-transform">{h.icon}</div>
+                          <div>
+                            <div className="flex items-center gap-3">
+                              <h4 className="text-sm font-black uppercase tracking-widest text-white">{h.text}</h4>
+                            </div>
+                            
+                            {/* 7-Day Subtle Progress Indicator */}
+                            <div className="flex items-center gap-1.5 mt-2.5 mb-1">
+                               {weekProgress.map((done, i) => (
+                                 <div key={i} className={`w-2.5 h-1 rounded-full transition-colors ${done ? 'bg-blue-500 shadow-[0_0_5px_rgba(59,130,246,0.5)]' : 'bg-zinc-800'}`} />
+                               ))}
+                               <span className="text-[8px] font-black text-zinc-700 uppercase tracking-widest ml-1">7D Clearance</span>
+                            </div>
+
+                            <div className="flex items-center gap-4 mt-2">
+                              <span className="text-[9px] font-bold text-zinc-600 uppercase bg-zinc-900 px-3 py-1 rounded-full">{h.category}</span>
+                              <div className="flex items-center gap-1.5">
+                                <Clock size={10} className="text-blue-500" />
+                                <span className="text-[9px] font-bold text-blue-500 uppercase">{h.scheduleTime || '09:00'}</span>
+                              </div>
                             </div>
                           </div>
                         </div>
+                        <div className="flex-1 flex gap-2.5 items-center overflow-x-auto scrollbar-hide px-2">
+                          {Array.from({ length: 14 }).map((_, i) => {
+                            const offset = 13 - i;
+                            const isDone = h.entries[`day-${todayIdx - offset}`];
+                            return (
+                              <button key={i} onClick={() => toggleHabit(h.id, offset)} className={`w-10 h-10 rounded-xl border transition-all flex items-center justify-center shrink-0 ${isDone ? 'bg-blue-600 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.4)]' : 'bg-zinc-900 border-zinc-800/60 hover:border-zinc-500'}`}>
+                                {isDone && <CheckCircle2 size={16} className="text-white" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <button onClick={() => setHabits(habits.filter(x => x.id !== h.id))} className="p-4 opacity-0 group-hover:opacity-100 text-zinc-800 hover:text-rose-500 transition-all"><Trash2 size={20}/></button>
                       </div>
-                      <div className="flex-1 flex gap-2.5 items-center overflow-x-auto scrollbar-hide px-2">
-                        {Array.from({ length: 14 }).map((_, i) => {
-                          const offset = 13 - i;
-                          const isDone = h.entries[`day-${todayIdx - offset}`];
-                          return (
-                            <button key={i} onClick={() => toggleHabit(h.id, offset)} className={`w-10 h-10 rounded-xl border transition-all flex items-center justify-center shrink-0 ${isDone ? 'bg-blue-600 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.4)]' : 'bg-zinc-900 border-zinc-800/60 hover:border-zinc-500'}`}>
-                              {isDone && <CheckCircle2 size={16} className="text-white" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <button onClick={() => setHabits(habits.filter(x => x.id !== h.id))} className="p-4 opacity-0 group-hover:opacity-100 text-zinc-800 hover:text-rose-500 transition-all"><Trash2 size={20}/></button>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {habits.length === 0 && (
                     <div className="py-32 text-center border-2 border-dashed border-zinc-900 rounded-[3.5rem] bg-zinc-950/20">
                       <Skull size={48} className="mx-auto text-zinc-900 mb-6" />
@@ -736,46 +812,67 @@ const TaskChaser = () => {
         )}
 
         {isAdding && (
-          <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl" onClick={() => setIsAdding(false)}>
+          <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6 bg-black/98 backdrop-blur-2xl" onClick={() => { if (!isRecording) setIsAdding(false); }}>
              <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full max-w-lg bg-zinc-950 border border-zinc-800 rounded-[4rem] p-16 space-y-12" onClick={e => e.stopPropagation()}>
-                <h2 className="text-5xl font-black uppercase italic tracking-tighter text-center text-white">Objective Deployment</h2>
-                <form onSubmit={(e) => {
-                  e.preventDefault();
-                  const f = new FormData(e.currentTarget);
-                  const name = f.get('name') as string;
-                  if (!name) return;
-                  setHabits([...habits, { 
-                    id: crypto.randomUUID(), 
-                    text: name.toUpperCase(), 
-                    icon: '⚡', 
-                    category: f.get('cat') as string, 
-                    priority: 'MEDIUM', 
-                    entries: {},
-                    scheduleTime: (f.get('time') as string) || '09:00'
-                  }]);
-                  setIsAdding(false);
-                  speakAsPersona("SYNCHRONIZED", "The operational matrix has been updated.");
-                }} className="space-y-8">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-4xl font-black uppercase italic tracking-tighter text-white">Neural Uplink</h2>
+                  <button onClick={() => setIsAdding(false)} className="p-4 text-zinc-700 hover:text-white"><X size={24}/></button>
+                </div>
+                
+                <div className="flex flex-col items-center gap-10 py-6">
                    <div className="relative">
-                      <input name="name" required placeholder="OBJECTIVE DESIGNATION..." className="w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-8 text-white font-bold uppercase outline-none focus:border-blue-500 transition-all pr-20 shadow-inner" />
-                      <button type="button" onClick={isRecording ? stopVoiceCapture : startVoiceCapture} className={`absolute right-5 top-1/2 -translate-y-1/2 p-4 rounded-2xl ${isRecording ? 'bg-rose-600' : 'bg-blue-600'} transition-colors`}>
-                         {isProcessingVoice ? <Loader2 className="animate-spin" size={24}/> : isRecording ? <MicOff size={24}/> : <Mic size={24}/>}
-                      </button>
+                     <motion.button 
+                      onClick={isRecording ? stopVoiceCapture : startVoiceCapture} 
+                      animate={isRecording ? { scale: [1, 1.1, 1] } : {}}
+                      transition={{ repeat: Infinity, duration: 1 }}
+                      className={`w-32 h-32 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-rose-600 shadow-[0_0_50px_rgba(225,29,72,0.5)]' : 'bg-blue-600 shadow-[0_0_50px_rgba(59,130,246,0.3)] hover:scale-105'}`}
+                     >
+                       {isProcessingVoice ? <Loader2 className="animate-spin text-white" size={48}/> : isRecording ? <MicOff size={48}/> : <Mic size={48}/>}
+                     </motion.button>
+                     {isRecording && <div className="absolute -bottom-12 left-1/2 -translate-x-1/2"><VoiceWave /></div>}
                    </div>
-                   <div className="grid grid-cols-2 gap-6">
-                      <div className="space-y-3">
-                         <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest ml-4">Classification</label>
-                         <select name="cat" className="w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-7 text-xs font-black uppercase text-white outline-none appearance-none cursor-pointer">
+                   
+                   <div className="text-center space-y-2">
+                      <p className="text-[11px] font-black uppercase tracking-[0.4em] text-blue-500">
+                        {isRecording ? "Listening to User Input..." : isProcessingVoice ? "Processing Neural Data..." : "Tap to Speak Command"}
+                      </p>
+                      <p className="text-[9px] font-bold text-zinc-700 uppercase tracking-widest max-w-[200px] mx-auto">
+                        "Add a high priority work task for tomorrow at 10 AM."
+                      </p>
+                   </div>
+                </div>
+
+                <div className="pt-8 border-t border-zinc-900">
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-8 text-center">Manual Intervention</h3>
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    const f = new FormData(e.currentTarget);
+                    const name = f.get('name') as string;
+                    if (!name) return;
+                    setHabits([...habits, { 
+                      id: crypto.randomUUID(), 
+                      text: name.toUpperCase(), 
+                      icon: '⚡', 
+                      category: f.get('cat') as string, 
+                      priority: 'MEDIUM', 
+                      entries: {},
+                      scheduleTime: (f.get('time') as string) || '08:00'
+                    }]);
+                    setIsAdding(false);
+                    speakAsPersona("SYNCHRONIZED", "The operational matrix has been updated manually.");
+                  }} className="space-y-8">
+                     <div className="relative">
+                        <input name="name" placeholder="OBJECTIVE DESIGNATION..." className="w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-7 text-white font-bold uppercase outline-none focus:border-blue-500 transition-all shadow-inner text-sm" />
+                     </div>
+                     <div className="grid grid-cols-2 gap-6">
+                        <select name="cat" className="w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-6 text-[10px] font-black uppercase text-white outline-none appearance-none cursor-pointer">
                            {['WORK', 'HEALTH', 'GROWTH', 'ROUTINE'].map(k => <option key={k} value={k}>{k}</option>)}
-                         </select>
-                      </div>
-                      <div className="space-y-3">
-                         <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest ml-4">Deployment Time</label>
-                         <input type="time" name="time" defaultValue="09:00" className="w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-7 text-xs font-black uppercase text-white outline-none" />
-                      </div>
-                   </div>
-                   <button type="submit" className="w-full py-8 bg-blue-600 text-white rounded-[2rem] text-xs font-black uppercase tracking-[0.3em] shadow-2xl hover:brightness-110 active:scale-95 transition-all">Execute Mission Sync</button>
-                </form>
+                        </select>
+                        <input type="time" name="time" defaultValue="08:00" className="w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-6 text-[10px] font-black uppercase text-white outline-none" />
+                     </div>
+                     <button type="submit" className="w-full py-6 bg-zinc-900 border border-zinc-800 text-white rounded-[2rem] text-[10px] font-black uppercase tracking-[0.3em] shadow-2xl hover:bg-zinc-800 transition-all">Execute Manual Sync</button>
+                  </form>
+                </div>
              </motion.div>
           </div>
         )}
