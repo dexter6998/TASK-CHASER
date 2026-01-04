@@ -342,7 +342,8 @@ const TaskChaser = () => {
   };
 
   const toggleHabit = (id: string, offset: number) => {
-    const day = todayIdx - offset;
+    const dayRaw = todayIdx - offset;
+    const day = dayRaw <= 0 ? (31 + dayRaw) : dayRaw;
     const key = `day-${day}`;
     setHabits(habits.map(h => h.id === id ? { ...h, entries: { ...h.entries, [key]: !h.entries[key] } } : h));
   };
@@ -546,44 +547,57 @@ const TaskChaser = () => {
                 </div>
                 <div className="space-y-5">
                   {habits.map(h => {
-                    // Calculate 7-day progress indicator
+                    // Calculate 7-day progress indicator with wrap-around lookup
                     const weekProgress = Array.from({ length: 7 }).map((_, i) => {
-                      const day = todayIdx - (6 - i);
+                      const dayRaw = todayIdx - (6 - i);
+                      const day = dayRaw <= 0 ? (31 + dayRaw) : dayRaw;
                       return !!h.entries[`day-${day}`];
                     });
 
                     return (
                       <div key={h.id} className="bg-zinc-950 border border-zinc-900 p-8 rounded-[2rem] flex flex-col md:flex-row md:items-center justify-between gap-10 group hover:border-zinc-700 transition-all">
-                        <div className="flex items-center gap-6 min-w-[280px]">
+                        <div className="flex items-center gap-6 min-w-[340px]">
                           <div className="w-16 h-16 bg-zinc-900 rounded-[1.5rem] flex items-center justify-center text-3xl shadow-inner border border-zinc-800 group-hover:scale-105 transition-transform">{h.icon}</div>
-                          <div>
-                            <div className="flex items-center gap-3">
-                              <h4 className="text-sm font-black uppercase tracking-widest text-white">{h.text}</h4>
-                            </div>
-                            
-                            {/* 7-Day Subtle Progress Indicator */}
-                            <div className="flex items-center gap-1.5 mt-2.5 mb-1">
-                               {weekProgress.map((done, i) => (
-                                 <div key={i} className={`w-2.5 h-1 rounded-full transition-colors ${done ? 'bg-blue-500 shadow-[0_0_5px_rgba(59,130,246,0.5)]' : 'bg-zinc-800'}`} />
-                               ))}
-                               <span className="text-[8px] font-black text-zinc-700 uppercase tracking-widest ml-1">7D Clearance</span>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-4">
+                              <h4 className="text-sm font-black uppercase tracking-widest text-white truncate max-w-[160px]">{h.text}</h4>
+                              
+                              {/* 7-Day Subtle Inline Combat Record Pills */}
+                              <div className="flex items-center gap-1 bg-zinc-900/60 px-2.5 py-1.5 rounded-full border border-zinc-800/50 shadow-inner">
+                                 {weekProgress.map((done, i) => (
+                                   <div 
+                                      key={i} 
+                                      className={`w-1.5 h-1.5 rounded-full transition-all duration-700 ${done ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]' : 'bg-zinc-800'}`} 
+                                      title={i === 6 ? "Today" : `${6-i} days ago`}
+                                   />
+                                 ))}
+                              </div>
                             </div>
 
-                            <div className="flex items-center gap-4 mt-2">
+                            <div className="flex items-center gap-4 mt-3">
                               <span className="text-[9px] font-bold text-zinc-600 uppercase bg-zinc-900 px-3 py-1 rounded-full">{h.category}</span>
                               <div className="flex items-center gap-1.5">
                                 <Clock size={10} className="text-blue-500" />
                                 <span className="text-[9px] font-bold text-blue-500 uppercase">{h.scheduleTime || '09:00'}</span>
                               </div>
+                              <span className="text-[8px] font-black text-zinc-700 uppercase tracking-widest flex items-center gap-1.5">
+                                <Activity size={8} /> 7D Record
+                              </span>
                             </div>
                           </div>
                         </div>
                         <div className="flex-1 flex gap-2.5 items-center overflow-x-auto scrollbar-hide px-2">
                           {Array.from({ length: 14 }).map((_, i) => {
                             const offset = 13 - i;
-                            const isDone = h.entries[`day-${todayIdx - offset}`];
+                            const dayRaw = todayIdx - offset;
+                            const day = dayRaw <= 0 ? (31 + dayRaw) : dayRaw;
+                            const isDone = h.entries[`day-${day}`];
                             return (
-                              <button key={i} onClick={() => toggleHabit(h.id, offset)} className={`w-10 h-10 rounded-xl border transition-all flex items-center justify-center shrink-0 ${isDone ? 'bg-blue-600 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.4)]' : 'bg-zinc-900 border-zinc-800/60 hover:border-zinc-500'}`}>
+                              <button 
+                                key={i} 
+                                onClick={() => toggleHabit(h.id, offset)} 
+                                className={`w-10 h-10 rounded-xl border transition-all flex items-center justify-center shrink-0 ${isDone ? 'bg-blue-600 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.4)]' : 'bg-zinc-900 border-zinc-800/60 hover:border-zinc-500'}`}
+                              >
                                 {isDone && <CheckCircle2 size={16} className="text-white" />}
                               </button>
                             );
